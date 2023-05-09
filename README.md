@@ -1,4 +1,4 @@
-# Openssl provider for Cryptography API: Next Generation
+# Openssl provider using Cryptography API: Next Generation
 
 This repository serves as a version control for code for my bachelor thesis
 
