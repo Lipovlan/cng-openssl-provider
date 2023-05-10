@@ -1,11 +1,20 @@
-# Openssl provider using Cryptography API: Next Generation
+# OpenSSL provider using Cryptography API: Next Generation
 
-This repository serves as a version control for code for my bachelor thesis
+Basic OpenSSL provider implementation that uses Windows Cryptography API: Next generation. It is primarily
+meant to be a stepping stone for anybody wanting to implement their own provider. The functionality of
+this provider is in greater detail in the section `This providers functionality`. 
 
-## Prerequisites: 
+Any feedback or pull requests are welcome.
+
+The code is licensed under the MIT license, in case anybody would like to have even more permissive license,
+create an issue, and I'm going to try and find a solution.
+
+## Prerequisites for usage: 
   * OpenSSL 3.0.0+ (should be 3.2.0 compatible as well)
-  * CMake 3.16
   * Windows with CNG support
+
+## Prerequisites for compilation:
+  * Prerequisites for usage
   * Visual Studio with C++ compilation packages
   * Strawberry Perl
   * NASM
@@ -20,6 +29,7 @@ cpan -i Test::More
 Now you should be ready for the next step.
 
 ## Compilation of OpenSSL:
+These commands compile the 64 bit version. Modify the first and third line to compile for other platforms.
 
 ```
 C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat” amd64
