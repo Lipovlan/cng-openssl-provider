@@ -68,9 +68,9 @@ Optionally also run `nmake install install_docs`.
 ### Compilation of this project
 ```
 cmake -S . -B ./ custom-build-directory
-2 cmake --build ./ custom-build-directory --target cng_provider
-3 cmake --build ./ custom-build-directory --target install
-4 cmake --build ./ custom-build-directory --target client
+cmake --build ./ custom-build-directory --target cng_provider
+cmake --build ./ custom-build-directory --target install
+cmake --build ./ custom-build-directory --target client
 ```
 ### x86 compilation
 Make sure you compile OpenSSL in `x86` mode and have it installed. Use `amd64_x86` for `vcvarsall.bat` and `VC-WIN32` for `perl Configure`.
