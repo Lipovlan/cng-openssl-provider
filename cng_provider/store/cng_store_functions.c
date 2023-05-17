@@ -2,7 +2,7 @@
 #include <ncrypt.h>
 #include "../../debug.h"
 
-#define DEBUG_LEVEL DEBUG_ERROR
+#define DEBUG_LEVEL DEBUG_ALL
 
 /**
  * Helper function to initialize the windows certificate store
@@ -55,6 +55,7 @@ int load_another_privkey_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
     if (retval != TRUE || key_spec != CERT_NCRYPT_KEY_SPEC || caller_must_free != TRUE) {
         /* Failed to load the private key, either there was no private key associated or */
         /* there has been an error while loading it, anyway we try to load another       */
+        debug_printf("STORE> Recursing into loading private key\n", DEBUG_ALL, DEBUG_LEVEL);
         if (!load_another_privkey_from_store_into_context(store_ctx)) {
             NCryptFreeObject(tmp_key_handle);
             return 0;
@@ -144,10 +145,14 @@ void *cng_store_open(void *provctx, const char *uri) {
     /* Prepare for loading certificates */
     /* We do not check return value, if there are no keys we'll simply set eof */
     load_another_cert_from_store_into_context(store_ctx);
-
+    if (store_ctx->cert_store_eof){
+        debug_printf("STORE> No certificates were found in the store when opening it.\n", DEBUG_INFO, DEBUG_LEVEL);
+    }
     /* Same story as with certificates */
     load_another_privkey_from_store_into_context(store_ctx);
-
+    if (store_ctx->priv_key_store_eof){
+        debug_printf("STORE> No private keys were found in the store when opening it.\n", DEBUG_INFO, DEBUG_LEVEL);
+    }
     return store_ctx;
 }
 
