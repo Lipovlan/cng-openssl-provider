@@ -108,6 +108,14 @@ int find_and_use_client_certificate(const char *uri, OSSL_LIB_CTX *libctx, SSL_C
         if (OSSL_STORE_INFO_get_type(info) == OSSL_STORE_INFO_CERT) {
             printf("PROGRAM> Found certificate in store\n");
             X509 *loaded_certificate = OSSL_STORE_INFO_get0_CERT(info);
+
+            /* Print the subject name of the certificate */
+            X509_NAME *a = X509_get_subject_name(loaded_certificate);
+            BIO *stdoutbio = BIO_new_fd(_fileno(stdout), BIO_NOCLOSE);
+            X509_NAME_print(stdoutbio, a, 80);
+            BIO_free(stdoutbio);
+            printf("\n");
+
             /* Check that it is the certificate we want */
             if (!X509_has_attribute_value(loaded_certificate, SEARCH_FACTOR, SEARCH_VALUE)) { continue; }
             /* Save the public key, so we can compare it to private one later */
