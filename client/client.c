@@ -116,10 +116,12 @@ int find_and_use_client_certificate(const char *uri, OSSL_LIB_CTX *libctx, SSL_C
 
             /* Check that it is the certificate we want */
             if (!X509_has_attribute_value(loaded_certificate, SEARCH_FACTOR, SEARCH_VALUE)) {
-                debug_printf("PROGRAM> The certificate does not match search factor. Skipping.\n", DEBUG_INFO, DEBUG_LEVEL);
+                debug_printf("PROGRAM> The certificate does not match search factor. Skipping.\n", DEBUG_INFO,
+                             DEBUG_LEVEL);
                 continue;
             }
-            debug_printf("PROGRAM> The certificate matches search factor. Trying to load it into SSL context.\n", DEBUG_INFO, DEBUG_LEVEL);
+            debug_printf("PROGRAM> The certificate matches search factor. Trying to load it into SSL context.\n",
+                         DEBUG_INFO, DEBUG_LEVEL);
             /* Save the public key, so we can compare it to private one later */
             *public_key_of_certificate = X509_get0_pubkey(loaded_certificate);
             printf("PROGRAM> Public key of the certificate is: ");
@@ -164,9 +166,16 @@ int find_and_use_client_private_key(const char *uri, OSSL_LIB_CTX *libctx, SSL_C
             EVP_PKEY_print_public(stdoutbio, pkey, 1, NULL);
             /* Check that this is the private key of our certificate */
             if (!EVP_PKEY_eq(pkey, certificate_public_key)) {
-                debug_printf("PROGRAM> The public key does not match the public key of the certificate. Skipping.\n", DEBUG_INFO, DEBUG_LEVEL);
+                debug_printf("PROGRAM> The public key does not match the public key of the certificate. Skipping.\n",
+                             DEBUG_INFO, DEBUG_LEVEL);
                 continue;
             }
+            debug_printf(
+                    "PROGRAM> The public keys of the loaded certificate and this private key match.\n",
+                    DEBUG_INFO, DEBUG_LEVEL);
+            debug_printf("PROGRAM> Trying to load this private key into SSL context.\n", DEBUG_INFO, DEBUG_LEVEL);
+
+
             /* Use this private key for SSL/TLS */
             if (!SSL_CTX_use_PrivateKey(ssl_ctx, pkey)) {
                 debug_printf("PROGRAM> Private key cannot be loaded into SSL context\n", DEBUG_ERROR, DEBUG_LEVEL);
@@ -196,7 +205,7 @@ int main() {
     remove("log.txt");
 
     OSSL_LIB_CTX *libctx;
-    start_tracing();
+    //start_tracing();
 
     // LOAD PROVIDERS  ----------------------------------------------------------------------------------
     OSSL_PROVIDER *prov_cng;
@@ -230,7 +239,8 @@ int main() {
     int rxlen;
 
     struct sockaddr_in addr;
-    debug_printf("PROGRAM> We will connect to a remote server and check the SSL certificate\n", DEBUG_INFO, DEBUG_LEVEL);
+    debug_printf("PROGRAM> We will connect to a remote server and check the SSL certificate\n", DEBUG_INFO,
+                 DEBUG_LEVEL);
 
     /* Microsoft Docs */
     // The WSAStartup function must be the first Windows Sockets function called by an application or DLL.
@@ -253,7 +263,8 @@ int main() {
 
     EVP_PKEY *pubkey = NULL;
     if (!find_and_use_client_certificate(CNG_URI, libctx, ssl_ctx, &pubkey)) {
-        debug_printf("PROGRAM> Could not find certificate with this search criteria in store\n", DEBUG_ERROR, DEBUG_LEVEL);
+        debug_printf("PROGRAM> Could not find certificate with this search criteria in store\n", DEBUG_ERROR,
+                     DEBUG_LEVEL);
         goto exit;
     }
     debug_printf("PROGRAM> Certificate successfully loaded into SSL context\n", DEBUG_INFO, DEBUG_LEVEL);
