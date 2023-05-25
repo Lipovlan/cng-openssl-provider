@@ -12,7 +12,7 @@
 int initialize_windows_cert_store(T_CNG_STORE_CTX *store_ctx) {
     store_ctx->windows_certificate_store = CertOpenSystemStore(0, store_ctx->windows_system_store_name);
     if (store_ctx->windows_certificate_store) {
-        debug_printf("STORE> The system store is open. Continue.\n", DEBUG_INFO, DEBUG_LEVEL);
+        debug_printf("STORE> The system store is now open.\n", DEBUG_INFO, DEBUG_LEVEL);
         return 1;
     } else {
         debug_printf("STORE> The system store did not open.\n", DEBUG_ERROR, DEBUG_LEVEL);
@@ -41,11 +41,13 @@ void load_another_cert_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
  * @param store_ctx Our providers store management context
  */
 int load_another_privkey_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
-
     store_ctx->prev_key_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store,
                                                                store_ctx->prev_key_cert_ctx);
     store_ctx->priv_key_store_eof = !store_ctx->prev_key_cert_ctx;
-    if (store_ctx->priv_key_store_eof) { return 0; }
+    if (store_ctx->priv_key_store_eof) {
+        debug_printf("STORE> No more certificates in store to extract private keys from\n", DEBUG_INFO, DEBUG_LEVEL);
+        return 0;
+    }
 
     DWORD key_spec;
     BOOL caller_must_free;
@@ -58,10 +60,12 @@ int load_another_privkey_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
         debug_printf("STORE> Recursing into loading private key\n", DEBUG_ALL, DEBUG_LEVEL);
         if (!load_another_privkey_from_store_into_context(store_ctx)) {
             NCryptFreeObject(tmp_key_handle);
+            debug_printf("STORE> Could not extract private key from certificate\n", DEBUG_INFO, DEBUG_LEVEL);
             return 0;
         }
         return 1; /* Recursive call was a success */
     }
+    debug_printf("STORE> Private key extracted from certificate: ", DEBUG_INFO, DEBUG_LEVEL);
     store_ctx->key->windows_key_handle = tmp_key_handle;
     return 1;
 }
@@ -144,11 +148,13 @@ void *cng_store_open(void *provctx, const char *uri) {
 
     /* Prepare for loading certificates */
     /* We do not check return value, if there are no keys we'll simply set eof */
+    debug_printf("STORE> Trying to preload certificates from store.\n", DEBUG_INFO, DEBUG_LEVEL);
     load_another_cert_from_store_into_context(store_ctx);
     if (store_ctx->cert_store_eof){
         debug_printf("STORE> No certificates were found in the store when opening it.\n", DEBUG_INFO, DEBUG_LEVEL);
     }
     /* Same story as with certificates */
+    debug_printf("STORE> Trying to preload private keys from store.\n", DEBUG_INFO, DEBUG_LEVEL);
     load_another_privkey_from_store_into_context(store_ctx);
     if (store_ctx->priv_key_store_eof){
         debug_printf("STORE> No private keys were found in the store when opening it.\n", DEBUG_INFO, DEBUG_LEVEL);
@@ -252,6 +258,7 @@ int load_another_private_key(T_CNG_STORE_CTX *store_ctx, OSSL_CALLBACK *object_c
     }
 
     /* We do not check return value, in case of error we set eof flag */
+    debug_printf("STORE> Preloading private key for future use\n", DEBUG_INFO, DEBUG_LEVEL);
     load_another_privkey_from_store_into_context(store_ctx);
 
     return 1;

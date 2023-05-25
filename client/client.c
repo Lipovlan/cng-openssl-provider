@@ -43,7 +43,7 @@ SOCKET create_socket() {
     SOCKET s;
     s = socket(AF_INET, SOCK_STREAM, 0);
     if (s < 0) {
-        perror("Unable to create socket");
+        debug_printf("Unable to create socket", DEBUG_ERROR, DEBUG_LEVEL);
         exit(EXIT_FAILURE);
     }
 
@@ -57,8 +57,7 @@ SSL_CTX *create_context(OSSL_LIB_CTX *libctx) {
     // The question mark means that our provider is preferred
     // https://mta.openssl.org/pipermail/openssl-users/2023-February/015831.html
     if (ctx == NULL) {
-        perror("Unable to create SSL context");
-        ERR_print_errors_fp(stderr);
+        debug_printf("Unable to create SSL context", DEBUG_ERROR, DEBUG_LEVEL);
         exit(EXIT_FAILURE);
     }
     return ctx;
@@ -96,41 +95,48 @@ int find_and_use_client_certificate(const char *uri, OSSL_LIB_CTX *libctx, SSL_C
     OSSL_STORE_CTX *ossl_store_ctx = OSSL_STORE_open_ex(uri, libctx, NULL, NULL,
                                                         NULL, NULL, NULL, NULL);
     if (ossl_store_ctx == NULL) { return 0; }
-
+    BIO *stdoutbio = BIO_new_fd(_fileno(stdout), BIO_NOCLOSE);
     /* Enumerate certificates in the store we just opened */
     while (!OSSL_STORE_eof(ossl_store_ctx)) {
         OSSL_STORE_INFO *info = OSSL_STORE_load(ossl_store_ctx);
         if (info == NULL) {
+            BIO_free(stdoutbio);
             OSSL_STORE_close(ossl_store_ctx);
             return 0;
         }
 
         if (OSSL_STORE_INFO_get_type(info) == OSSL_STORE_INFO_CERT) {
-            printf("PROGRAM> Found certificate in store\n");
+            debug_printf("PROGRAM> Found certificate in store\n", DEBUG_INFO, DEBUG_LEVEL);
             X509 *loaded_certificate = OSSL_STORE_INFO_get0_CERT(info);
 
             /* Print the subject name of the certificate */
             X509_NAME *a = X509_get_subject_name(loaded_certificate);
-            BIO *stdoutbio = BIO_new_fd(_fileno(stdout), BIO_NOCLOSE);
             X509_NAME_print(stdoutbio, a, 80);
-            BIO_free(stdoutbio);
             printf("\n");
 
             /* Check that it is the certificate we want */
-            if (!X509_has_attribute_value(loaded_certificate, SEARCH_FACTOR, SEARCH_VALUE)) { continue; }
+            if (!X509_has_attribute_value(loaded_certificate, SEARCH_FACTOR, SEARCH_VALUE)) {
+                debug_printf("PROGRAM> The certificate does not match search factor. Skipping.\n", DEBUG_INFO, DEBUG_LEVEL);
+                continue;
+            }
+            debug_printf("PROGRAM> The certificate matches search factor. Trying to load it into SSL context.\n", DEBUG_INFO, DEBUG_LEVEL);
             /* Save the public key, so we can compare it to private one later */
             *public_key_of_certificate = X509_get0_pubkey(loaded_certificate);
+            printf("PROGRAM> Public key of the certificate is: ");
+            EVP_PKEY_print_public(stdoutbio, *public_key_of_certificate, 1, NULL);
             /* Use this certificate for SSL/TLS */
             if (!SSL_CTX_use_certificate(ssl_ctx, loaded_certificate)) {
-                printf("PROGRAM> The certificate cannot be loaded into SSL context\n");
+                debug_printf("PROGRAM> The certificate cannot be loaded into SSL context\n", DEBUG_ERROR, DEBUG_LEVEL);
                 break;
             }
+            BIO_free(stdoutbio);
             OSSL_STORE_close(ossl_store_ctx);
             return 1;
         } else {
-            printf("PROGRAM> Found something that is not a certificate, skipping\n");
+            debug_printf("PROGRAM> Found something that is not a certificate, skipping\n", DEBUG_INFO, DEBUG_LEVEL);
         }
     }
+    BIO_free(stdoutbio);
     OSSL_STORE_close(ossl_store_ctx);
     return 0;
 }
@@ -140,29 +146,40 @@ int find_and_use_client_private_key(const char *uri, OSSL_LIB_CTX *libctx, SSL_C
     OSSL_STORE_CTX *ossl_store_ctx = OSSL_STORE_open_ex(uri, libctx, NULL, NULL,
                                                         NULL, NULL, NULL, NULL);
     if (ossl_store_ctx == NULL) { return 0; }
+    BIO *stdoutbio = BIO_new_fd(_fileno(stdout), BIO_NOCLOSE);
 
     /* Enumerate keys in the store we just opened */
     while (!OSSL_STORE_eof(ossl_store_ctx)) {
         OSSL_STORE_INFO *info = OSSL_STORE_load(ossl_store_ctx);
         if (info == NULL) {
+            BIO_free(stdoutbio);
             OSSL_STORE_close(ossl_store_ctx);
             return 0;
         }
 
         if (OSSL_STORE_INFO_get_type(info) == OSSL_STORE_INFO_PKEY) {
-            printf("PROGRAM> Found private key in store\n");
+            debug_printf("PROGRAM> Found private key in store\n", DEBUG_INFO, DEBUG_LEVEL);
             EVP_PKEY *pkey = OSSL_STORE_INFO_get0_PKEY(info);
+            printf("PROGRAM> Public key of the private key is: ");
+            EVP_PKEY_print_public(stdoutbio, pkey, 1, NULL);
             /* Check that this is the private key of our certificate */
-            if (!EVP_PKEY_eq(pkey, certificate_public_key)) { continue; }
+            if (!EVP_PKEY_eq(pkey, certificate_public_key)) {
+                debug_printf("PROGRAM> The public key does not match the public key of the certificate. Skipping.\n", DEBUG_INFO, DEBUG_LEVEL);
+                continue;
+            }
             /* Use this private key for SSL/TLS */
             if (!SSL_CTX_use_PrivateKey(ssl_ctx, pkey)) {
-                printf("PROGRAM> Private key cannot be loaded into SSL context\n");
+                debug_printf("PROGRAM> Private key cannot be loaded into SSL context\n", DEBUG_ERROR, DEBUG_LEVEL);
+                BIO_free(stdoutbio);
                 return 0;
             }
+            BIO_free(stdoutbio);
+
             OSSL_STORE_close(ossl_store_ctx);
             return 1;
         }
     }
+    BIO_free(stdoutbio);
     OSSL_STORE_close(ossl_store_ctx);
     return 0; // Could not find matching private key
 }
@@ -189,14 +206,14 @@ int main() {
     /* Load Multiple providers into the library context */
     prov_cng = OSSL_PROVIDER_load(libctx, "cng_provider");
     if (prov_cng == NULL) {
-        printf("PROGRAM> Failed to load CNG provider\n");
+        debug_printf("PROGRAM> Failed to load CNG provider\n", DEBUG_ERROR, DEBUG_LEVEL);
         OSSL_PROVIDER_unload(prov_cng);
         exit(EXIT_FAILURE);
     }
 
     prov_default = OSSL_PROVIDER_load(libctx, "default");
     if (prov_default == NULL) {
-        printf("PROGRAM> Failed to load default provider\n");
+        debug_printf("PROGRAM> Failed to load default provider\n", DEBUG_ERROR, DEBUG_LEVEL);
         OSSL_PROVIDER_unload(prov_cng);
         OSSL_PROVIDER_unload(prov_default);
         exit(EXIT_FAILURE);
@@ -213,7 +230,7 @@ int main() {
     int rxlen;
 
     struct sockaddr_in addr;
-    debug_printf("PROGRAM> We will connect to a remote server and check the SSL certificate\n", 0, DEBUG_LEVEL);
+    debug_printf("PROGRAM> We will connect to a remote server and check the SSL certificate\n", DEBUG_INFO, DEBUG_LEVEL);
 
     /* Microsoft Docs */
     // The WSAStartup function must be the first Windows Sockets function called by an application or DLL.
@@ -236,17 +253,17 @@ int main() {
 
     EVP_PKEY *pubkey = NULL;
     if (!find_and_use_client_certificate(CNG_URI, libctx, ssl_ctx, &pubkey)) {
-        debug_printf("PROGRAM> Could not find certificate with this common name in store\n", 0, DEBUG_LEVEL);
+        debug_printf("PROGRAM> Could not find certificate with this search criteria in store\n", DEBUG_ERROR, DEBUG_LEVEL);
         goto exit;
     }
     debug_printf("PROGRAM> Certificate successfully loaded into SSL context\n", DEBUG_INFO, DEBUG_LEVEL);
 
     if (!find_and_use_client_private_key(CNG_URI, libctx, ssl_ctx, pubkey)) {
-        debug_printf("PROGRAM> Could not find matching private key in store\n", 0, DEBUG_LEVEL);
+        debug_printf("PROGRAM> Could not find matching private key in store\n", DEBUG_ERROR, DEBUG_LEVEL);
         goto exit;
     }
     debug_printf("PROGRAM> Private key successfully loaded into SSL context\n", DEBUG_INFO, DEBUG_LEVEL);
-    debug_printf("PROGRAM> Setting ssl contex is finished, now creating socket\n", 0, DEBUG_LEVEL);
+    debug_printf("PROGRAM> Setting ssl contex is finished, now creating socket\n", DEBUG_INFO, DEBUG_LEVEL);
     /* Create "bare" socket */
     client_skt = create_socket();
     /* Set up connect address */
@@ -255,10 +272,10 @@ int main() {
     addr.sin_port = htons(SERVER_PORT);
     /* Do TCP connect with server */
     if (connect(client_skt, (struct sockaddr *) &addr, sizeof(addr)) != 0) {
-        perror("PROGRAM> Unable to TCP connect to server");
+        debug_printf("PROGRAM> Unable to TCP connect to server", DEBUG_ERROR, DEBUG_LEVEL);
         goto exit;
     } else {
-        printf("PROGRAM> TCP connection to server successful\n");
+        debug_printf("PROGRAM> TCP connection to server successful\n", DEBUG_INFO, DEBUG_LEVEL);
     }
 
     /* Create client SSL structure using dedicated client socket */
@@ -271,7 +288,7 @@ int main() {
 
     /* Now do SSL connect with server */
     if (SSL_connect(ssl) == 1) {
-        debug_printf("PROGRAM> SSL connection to server successful\n\n", 0, DEBUG_LEVEL);
+        debug_printf("PROGRAM> SSL connection to server successful\n\n", DEBUG_INFO, DEBUG_LEVEL);
 
         char *header = "GET / HTTP/1.1\nHost: ";
         char *end = "\n\n";
@@ -282,8 +299,7 @@ int main() {
 
         /* Send it to the server */
         if (SSL_write(ssl, msg, msg_len) <= 0) {
-            printf("Server closed connection\n");
-            ERR_print_errors_fp(stderr);
+            debug_printf("PROGRAM> Server closed connection on write\n", DEBUG_ERROR, DEBUG_LEVEL);
             free(msg);
             goto exit;
         }
@@ -291,8 +307,7 @@ int main() {
         /* Wait for the response */
         rxlen = SSL_read(ssl, rxbuf, rxcap);
         if (rxlen <= 0) {
-            printf("PROGRAM> Server closed connection\n");
-            ERR_print_errors_fp(stderr);
+            debug_printf("PROGRAM> Server closed connection on read\n", DEBUG_INFO, DEBUG_LEVEL);
             free(msg);
             goto exit;
         } else {
@@ -302,14 +317,14 @@ int main() {
         }
         free(msg);
     } else {
-        printf("PROGRAM> SSL connection to server failed\n\n");
+        debug_printf("PROGRAM> SSL connection to server failed\n\n", DEBUG_ERROR, DEBUG_LEVEL);
         ERR_print_errors_fp(stderr);
     }
 
     exit:
 
     /* Close up */
-    debug_printf("PROGRAM> Client exiting...\n", 0, DEBUG_LEVEL);
+    debug_printf("PROGRAM> Client exiting...\n", DEBUG_INFO, DEBUG_LEVEL);
     if (ssl != NULL) {
         SSL_shutdown(ssl);
         SSL_free(ssl);
