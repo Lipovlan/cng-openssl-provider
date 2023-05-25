@@ -2,7 +2,7 @@
 #include <ncrypt.h>
 #include "../../debug.h"
 
-#define DEBUG_LEVEL DEBUG_ERROR
+#define DEBUG_LEVEL DEBUG_INFO
 
 /**
  * Helper function to initialize the windows certificate store
@@ -65,7 +65,6 @@ int load_another_privkey_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
         }
         return 1; /* Recursive call was a success */
     }
-    debug_printf("STORE> Private key extracted from certificate: ", DEBUG_INFO, DEBUG_LEVEL);
     store_ctx->key->windows_key_handle = tmp_key_handle;
     return 1;
 }
