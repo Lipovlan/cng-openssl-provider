@@ -2,7 +2,7 @@
 #include <ncrypt.h>
 #include "../../debug.h"
 
-#define DEBUG_LEVEL DEBUG_ALL
+#define DEBUG_LEVEL DEBUG_ERROR
 
 /**
  * Helper function to initialize the windows certificate store

@@ -25,7 +25,7 @@
 
 #include "../debug.h"
 
-#define DEBUG_LEVEL 0
+#define DEBUG_LEVEL DEBUG_ALL
 
 #define SERVER_PORT 443
 #define SERVER_IP "185.8.165.85"
@@ -92,7 +92,7 @@ int X509_has_attribute_value(X509 *cert, int nid, const char *common_name) {
 }
 
 int find_and_use_client_certificate(const char *uri, OSSL_LIB_CTX *libctx, SSL_CTX *ssl_ctx,
-                                    EVP_PKEY **private_key_of_certificate) {
+                                    EVP_PKEY **public_key_of_certificate) {
     OSSL_STORE_CTX *ossl_store_ctx = OSSL_STORE_open_ex(uri, libctx, NULL, NULL,
                                                         NULL, NULL, NULL, NULL);
     if (ossl_store_ctx == NULL) { return 0; }
@@ -119,14 +119,16 @@ int find_and_use_client_certificate(const char *uri, OSSL_LIB_CTX *libctx, SSL_C
             /* Check that it is the certificate we want */
             if (!X509_has_attribute_value(loaded_certificate, SEARCH_FACTOR, SEARCH_VALUE)) { continue; }
             /* Save the public key, so we can compare it to private one later */
-            *private_key_of_certificate = X509_get0_pubkey(loaded_certificate);
+            *public_key_of_certificate = X509_get0_pubkey(loaded_certificate);
             /* Use this certificate for SSL/TLS */
             if (!SSL_CTX_use_certificate(ssl_ctx, loaded_certificate)) {
-                printf("PROGRAM> Certificate cannot be loaded into SSL context\n");
+                printf("PROGRAM> The certificate cannot be loaded into SSL context\n");
                 break;
             }
             OSSL_STORE_close(ossl_store_ctx);
             return 1;
+        } else {
+            printf("PROGRAM> Found something that is not a certificate, skipping\n");
         }
     }
     OSSL_STORE_close(ossl_store_ctx);
@@ -237,11 +239,13 @@ int main() {
         debug_printf("PROGRAM> Could not find certificate with this common name in store\n", 0, DEBUG_LEVEL);
         goto exit;
     }
+    debug_printf("PROGRAM> Certificate successfully loaded into SSL context\n", DEBUG_INFO, DEBUG_LEVEL);
+
     if (!find_and_use_client_private_key(CNG_URI, libctx, ssl_ctx, pubkey)) {
         debug_printf("PROGRAM> Could not find matching private key in store\n", 0, DEBUG_LEVEL);
         goto exit;
     }
-
+    debug_printf("PROGRAM> Private key successfully loaded into SSL context\n", DEBUG_INFO, DEBUG_LEVEL);
     debug_printf("PROGRAM> Setting ssl contex is finished, now creating socket\n", 0, DEBUG_LEVEL);
     /* Create "bare" socket */
     client_skt = create_socket();
