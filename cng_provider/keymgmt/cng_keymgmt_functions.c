@@ -176,11 +176,11 @@ void *cng_keymgmt_load(const void *reference, size_t reference_sz) {
 int cng_keymgmt_get_params(void *keydata, OSSL_PARAM params[]) {
     T_CNG_KEYMGMT_KEYDATA *key = keydata;
     debug_printf("KEYMGMT> cng_keymgmt_get_params\n", DEBUG_TRACE, DEBUG_LEVEL);
-    wchar_t *key_name = get_key_name(key);
-    if (key_name != NULL) {
-        printf("KEYMGMT> Core wants params of %ls\n", key_name);
-        free(key_name);
-    }
+//    wchar_t *key_name = get_key_name(key);
+//    if (key_name != NULL) {
+//        printf("KEYMGMT> Core wants params of %ls\n", key_name);
+//        free(key_name);
+//    }
     OSSL_PARAM *p;
     p = OSSL_PARAM_locate(params, OSSL_PKEY_PARAM_BITS);
     /* The value should be the cryptographic length of the cryptosystem to which the key belongs, in bits.
