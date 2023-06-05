@@ -90,6 +90,8 @@ int load_another_privkey_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
             store_ctx->key->windows_key_handle = tmp_key_handle;
             return 1;
         } else {
+            debug_printf("STORE> Skipping non-RSA key\n", DEBUG_INFO,
+                         DEBUG_LEVEL);
             NCryptFreeObject(tmp_key_handle);
             return 0;
         }
