@@ -28,8 +28,34 @@ int initialize_windows_cert_store(T_CNG_STORE_CTX *store_ctx) {
  * @param store_ctx Our providers store management context
  */
 void load_another_cert_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
-    store_ctx->prev_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store, store_ctx->prev_cert_ctx);
+    store_ctx->prev_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store,
+                                                           store_ctx->prev_cert_ctx);
     store_ctx->cert_store_eof = !store_ctx->prev_cert_ctx;
+}
+
+/**
+ * Check if given CNG key handle is a RSA key
+ *
+ * @param key The key handle
+ * @return less then zero on error, 1 if key is RSA and 0 if it is not
+ */
+int key_is_rsa(NCRYPT_KEY_HANDLE key) {
+    PBYTE out;
+    DWORD out_len;
+    SECURITY_STATUS ss;
+    ss = NCryptGetProperty(key, NCRYPT_ALGORITHM_GROUP_PROPERTY, NULL, 0, &out_len, 0);
+    if (ss != ERROR_SUCCESS) { return -1; }
+    DWORD new_out_len;
+    out = malloc(out_len);
+    if (out == NULL) { return -1; }
+    ss = NCryptGetProperty(key, NCRYPT_ALGORITHM_GROUP_PROPERTY, out, out_len, &new_out_len, 0);
+    if (ss != ERROR_SUCCESS) {
+        free(out);
+        return -1;
+    }
+    int retval = !wcscmp((const unsigned short *) out, NCRYPT_RSA_ALGORITHM_GROUP);
+    free(out);
+    return retval;
 }
 
 /**
@@ -41,32 +67,34 @@ void load_another_cert_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
  * @param store_ctx Our providers store management context
  */
 int load_another_privkey_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
-    store_ctx->prev_key_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store,
-                                                               store_ctx->prev_key_cert_ctx);
-    store_ctx->priv_key_store_eof = !store_ctx->prev_key_cert_ctx;
-    if (store_ctx->priv_key_store_eof) {
-        debug_printf("STORE> No more certificates in store to extract private keys from\n", DEBUG_INFO, DEBUG_LEVEL);
-        return 0;
-    }
-
-    DWORD key_spec;
-    BOOL caller_must_free;
-    NCRYPT_KEY_HANDLE tmp_key_handle;
-    BOOL retval = CryptAcquireCertificatePrivateKey(store_ctx->prev_key_cert_ctx, CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG,
-                                                    NULL, &tmp_key_handle, &key_spec, &caller_must_free);
-    if (retval != TRUE || key_spec != CERT_NCRYPT_KEY_SPEC || caller_must_free != TRUE) {
-        /* Failed to load the private key, either there was no private key associated or */
-        /* there has been an error while loading it, anyway we try to load another       */
-        debug_printf("STORE> Recursing into loading private key\n", DEBUG_ALL, DEBUG_LEVEL);
-        if (!load_another_privkey_from_store_into_context(store_ctx)) {
-            NCryptFreeObject(tmp_key_handle);
-            debug_printf("STORE> Could not extract private key from certificate\n", DEBUG_INFO, DEBUG_LEVEL);
+    while (!store_ctx->priv_key_store_eof) {
+        store_ctx->prev_key_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store,
+                                                                   store_ctx->prev_key_cert_ctx);
+        store_ctx->priv_key_store_eof = !store_ctx->prev_key_cert_ctx;
+        if (store_ctx->priv_key_store_eof) {
+            debug_printf("STORE> No more certificates in store to extract private keys from\n", DEBUG_INFO,
+                         DEBUG_LEVEL);
             return 0;
         }
-        return 1; /* Recursive call was a success */
+        DWORD key_spec;
+        BOOL caller_must_free;
+        NCRYPT_KEY_HANDLE tmp_key_handle;
+        BOOL retval = CryptAcquireCertificatePrivateKey(store_ctx->prev_key_cert_ctx,
+                                                        CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG,
+                                                        NULL, &tmp_key_handle, &key_spec, &caller_must_free);
+        if (retval != TRUE || key_spec != CERT_NCRYPT_KEY_SPEC || caller_must_free != TRUE) {
+            NCryptFreeObject(tmp_key_handle);
+            continue;
+        }
+        if (key_is_rsa(tmp_key_handle) == 1) {
+            store_ctx->key->windows_key_handle = tmp_key_handle;
+            return 1;
+        } else {
+            NCryptFreeObject(tmp_key_handle);
+            return 0;
+        }
     }
-    store_ctx->key->windows_key_handle = tmp_key_handle;
-    return 1;
+    return 0;
 }
 
 /**
@@ -104,6 +132,8 @@ void init_store_ctx(T_CNG_STORE_CTX *store_ctx) {
     store_ctx->prev_cert_ctx = NULL;
     store_ctx->prev_key_cert_ctx = NULL;
     store_ctx->windows_system_store_name = NULL;
+    store_ctx->priv_key_store_eof = 0;
+    store_ctx->cert_store_eof = 0;
 }
 
 /**
@@ -149,13 +179,13 @@ void *cng_store_open(void *provctx, const char *uri) {
     /* We do not check return value, if there are no keys we'll simply set eof */
     debug_printf("STORE> Trying to preload certificates from store.\n", DEBUG_INFO, DEBUG_LEVEL);
     load_another_cert_from_store_into_context(store_ctx);
-    if (store_ctx->cert_store_eof){
+    if (store_ctx->cert_store_eof) {
         debug_printf("STORE> No certificates were found in the store when opening it.\n", DEBUG_INFO, DEBUG_LEVEL);
     }
     /* Same story as with certificates */
     debug_printf("STORE> Trying to preload private keys from store.\n", DEBUG_INFO, DEBUG_LEVEL);
     load_another_privkey_from_store_into_context(store_ctx);
-    if (store_ctx->priv_key_store_eof){
+    if (store_ctx->priv_key_store_eof) {
         debug_printf("STORE> No private keys were found in the store when opening it.\n", DEBUG_INFO, DEBUG_LEVEL);
     }
     return store_ctx;
@@ -222,7 +252,8 @@ void load_another_cert(T_CNG_STORE_CTX *store_ctx, OSSL_CALLBACK *object_cb, voi
             OSSL_PARAM_END
     };
     object_cb(cert_params, object_cbarg);
-    store_ctx->prev_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store, store_ctx->prev_cert_ctx);
+    store_ctx->prev_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store,
+                                                           store_ctx->prev_cert_ctx);
     if (!store_ctx->prev_cert_ctx) {
         store_ctx->cert_store_eof = 1;
     }
@@ -312,7 +343,8 @@ int cng_store_load(void *loaderctx,
     }
      */
     if (store_ctx->expected_parameter_type != OSSL_STORE_INFO_CERT && !store_ctx->expected_parameter_type) {
-        debug_printf("STORE> Core asked for something else than a certificate while loading.", DEBUG_TRACE, DEBUG_LEVEL);
+        debug_printf("STORE> Core asked for something else than a certificate while loading.", DEBUG_TRACE,
+                     DEBUG_LEVEL);
     }
     if (!store_ctx->cert_store_eof) {
         load_another_cert(store_ctx, object_cb, object_cbarg);
