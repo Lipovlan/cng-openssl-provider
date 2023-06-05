@@ -10,7 +10,7 @@ The code is licensed under the MIT license, in case anybody would like to have e
 create an issue, and I'm going to try and find a solution.
 
 ## This providers functionality
-This provider allows retrieval of certificates and their associated keys stored in Windows system stores. Associated
+This provider allows retrieval of certificates and their associated RSA keys (other types will be skipped) stored in Windows system stores. Associated
 keys can be used to sign digests with SHA2-256, 386 and 512 using OpenSSL API (with the work being done by CNG so
 non-exportable private keys can be used as well).
 ## Usage of this provider
