@@ -6,4 +6,4 @@ add_library(cng_provider MODULE cng_provider.c
 target_include_directories(cng_provider PRIVATE ${OPENSSL_INCLUDE_DIR})
 target_link_libraries(cng_provider PRIVATE OpenSSL::Crypto ncrypt)
 
-install(TARGETS cng_provider DESTINATION ossl-modules)
+install(TARGETS cng_provider DESTINATION lib/ossl-modules)

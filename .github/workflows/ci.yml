@@ -1,0 +1,54 @@
+name: Windows GitHub CI
+
+on:
+  pull_request: []
+  push: []
+  schedule:
+    # Run this experiment every 4th hour
+    # * is a special character in YAML so you have to quote this string
+    - cron:  '* */8 * * *'
+
+jobs:
+  build-cng_provider:
+    strategy:
+      matrix:
+        platform:
+          - msvc-arch: x64
+            cmake-arch: x64
+            openssl-target: VC-WIN64A
+          - msvc-arch: x86
+            cmake-arch: Win32
+            openssl-target: VC-WIN32
+    runs-on: windows-latest
+    steps:
+      - name: install MSVC for ${{ matrix.platform.msvc-arch }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.platform.msvc-arch }}
+      - name: checkout cng_provider
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: checkout OpenSSL
+        uses: actions/checkout@v3
+        with:
+          repository: openssl/openssl
+          path: openssl
+      - name: configure OpenSSL for ${{matrix.platform.openssl-target}}
+        run: |
+          $cwd = Get-Location
+          mkdir ..\openssl-install
+          perl Configure ${{matrix.platform.openssl-target}} --prefix="$cwd\..\openssl-install" no-asm no-shared
+        working-directory: openssl
+      - name: build+install OpenSSL
+        run: nmake /S install_sw
+        working-directory: openssl
+      - name: configure cng_provider for ${{ matrix.platform.cmake-arch }}
+        run: |
+          $cwd = Get-Location
+          cmake -A ${{ matrix.platform.cmake-arch }} `
+                -DCMAKE_INSTALL_PREFIX="$cwd\openssl-install" `
+                -DOPENSSL_ROOT_DIR="$cwd\openssl-install" `
+                -S . -B _build
+      - name: build cng_provider
+        run: cmake --build _build --config Release

@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.16)
 project(OpenSSL_Provider C)
 
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_INSTALL_PREFIX "C:/Program Files/OpenSSL/lib")
-set(CMAKE_FIND_DEBUG_MODE ON)
 
 if(WIN32)
   # Unfortunately, FindOpenSSL.cmake doesn't give satisfactory results
@@ -17,7 +15,6 @@ if(WIN32)
   # with their DLLs at all.
   set(OPENSSL_USE_STATIC_LIBS TRUE)
 endif()
-set(OPENSSL_ROOT_DIR "C:/Program Files/OpenSSL/")
 find_package(OpenSSL 3.0 REQUIRED)
 
 add_subdirectory(cng_provider)
