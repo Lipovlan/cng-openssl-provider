@@ -39,7 +39,7 @@ void load_another_cert_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
  * @param key The key handle
  * @return less then zero on error, 1 if key is RSA and 0 if it is not
  */
-int key_is_rsa(NCRYPT_KEY_HANDLE key) {
+const char *get_key_algorithm_name(NCRYPT_KEY_HANDLE key) {
     PBYTE out;
     DWORD out_len;
     SECURITY_STATUS ss;
@@ -53,9 +53,11 @@ int key_is_rsa(NCRYPT_KEY_HANDLE key) {
         free(out);
         return -1;
     }
-    int retval = !wcscmp((const unsigned short *) out, NCRYPT_RSA_ALGORITHM_GROUP);
+    const char *name = NULL;
+    if (!wcscmp((const unsigned short *) out, NCRYPT_RSA_ALGORITHM_GROUP))
+        name = "rsaEncryption";
     free(out);
-    return retval;
+    return name;
 }
 
 /**
@@ -86,15 +88,8 @@ int load_another_privkey_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
             NCryptFreeObject(tmp_key_handle);
             continue;
         }
-        if (key_is_rsa(tmp_key_handle) == 1) {
-            store_ctx->key->windows_key_handle = tmp_key_handle;
-            return 1;
-        } else {
-            debug_printf("STORE> Skipping non-RSA key\n", DEBUG_INFO,
-                         DEBUG_LEVEL);
-            NCryptFreeObject(tmp_key_handle);
-            return 0;
-        }
+        store_ctx->key->windows_key_handle = tmp_key_handle;
+        return 1;
     }
     return 0;
 }
@@ -273,11 +268,20 @@ int load_another_private_key(T_CNG_STORE_CTX *store_ctx, OSSL_CALLBACK *object_c
     /* Sanity check */
     if (store_ctx->priv_key_store_eof) { return 0; }
 
+    const char *keytype = get_key_algorithm_name(store_ctx->key->windows_key_handle);
+    if (!keytype) {
+        debug_printf("STORE> Skipping non-RSA key\n", DEBUG_INFO, DEBUG_LEVEL);
+        NCryptFreeObject(store_ctx->key->windows_key_handle);
+        store_ctx->key->windows_key_handle = 0;
+        return 0;
+    }
+
     static const int object_type_pkey = OSSL_OBJECT_PKEY;
     OSSL_PARAM privkey_params[] = {
             /* This can be a OSSL_OBJECT_PARAM_REFERENCE instead of OSSL_OBJECT_PARAM_DATA */
             OSSL_PARAM_int(OSSL_OBJECT_PARAM_TYPE, (int *) &object_type_pkey),
-            OSSL_PARAM_utf8_string(OSSL_OBJECT_PARAM_DATA_TYPE, "rsaEncryption", 14),
+            /* When given the string length 0, OSSL_PARAM_utf8_string() figures out the real length */
+            OSSL_PARAM_utf8_string(OSSL_OBJECT_PARAM_DATA_TYPE, keytype, 0),
             OSSL_PARAM_octet_string(OSSL_OBJECT_PARAM_REFERENCE, store_ctx->key, sizeof(T_CNG_KEYMGMT_KEYDATA)),
             /* Use this to send the private key directly as DER data, no need for signature algorithms later
              * OSSL_PARAM_octet_string(OSSL_OBJECT_PARAM_DATA, cng2_client_private_key_der,
