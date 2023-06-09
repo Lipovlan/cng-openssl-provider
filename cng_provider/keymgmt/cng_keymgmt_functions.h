@@ -67,6 +67,7 @@ OSSL_FUNC_keymgmt_export_types_ex_fn cng_keymgmt_export_types_ex;
 
 /* Our provider side key object data type */
 typedef struct s_cng_keymgmt_keydata {
+    const char *keytype;        /* key type, mostly used by store */
     NCRYPT_KEY_HANDLE windows_key_handle;
 } T_CNG_KEYMGMT_KEYDATA;
 
