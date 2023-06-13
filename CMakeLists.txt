@@ -5,11 +5,9 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_INSTALL_PREFIX "C:/Program Files/OpenSSL/lib")
 set(CMAKE_FIND_DEBUG_MODE ON)
 
-add_link_options("/NODEFAULTLIB:MSVCRT")
 set(OPENSSL_ROOT_DIR "C:/Program Files/OpenSSL/")
 find_package(OpenSSL 3.0 REQUIRED)
 
-set(LINK_LIBS OpenSSL::SSL OpenSSL::Crypto crypt32.lib ws2_32.lib ncrypt.lib)
 add_subdirectory(cng_provider)
 add_subdirectory(client)
 
