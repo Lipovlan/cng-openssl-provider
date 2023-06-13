@@ -1,4 +1,4 @@
-add_library(cng_provider SHARED cng_provider.c
+add_library(cng_provider MODULE cng_provider.c
         store/cng_store_functions.c
         keymgmt/cng_keymgmt_functions.c
         signature/cng_signature_functions.c
