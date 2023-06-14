@@ -56,7 +56,7 @@ both compiled in `x64` mode. See section `x86 compilation` for other architectur
 
 ### Compilation of OpenSSL:
 ```
-"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat” amd64
+"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" amd64
 cd "C:\path\to\root\of\openssl\repo"
 perl Configure VC-WIN64A -d no-shared enable-trace no-engine
 nmake
