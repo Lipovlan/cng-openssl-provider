@@ -56,7 +56,7 @@ both compiled in `x64` mode. See section `x86 compilation` for other architectur
 
 ### Compilation of OpenSSL:
 ```
-C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat” amd64
+"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" amd64
 cd "C:\path\to\root\of\openssl\repo"
 perl Configure VC-WIN64A -d no-shared enable-trace no-engine
 nmake
@@ -67,10 +67,10 @@ Optionally also run `nmake install install_docs`.
 
 ### Compilation of this project
 ```
-cmake -S . -B ./ custom-build-directory
-cmake --build ./ custom-build-directory --target cng_provider
-cmake --build ./ custom-build-directory --target install
-cmake --build ./ custom-build-directory --target client
+cmake -S . -B ./custom-build-directory
+cmake --build ./custom-build-directory --target cng_provider
+cmake --build ./custom-build-directory --target install
+cmake --build ./custom-build-directory --target client
 ```
 ### x86 compilation
 Make sure you compile OpenSSL in `x86` mode and have it installed. Use `amd64_x86` for `vcvarsall.bat` and `VC-WIN32` for `perl Configure`.
