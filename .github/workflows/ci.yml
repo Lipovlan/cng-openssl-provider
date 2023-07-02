@@ -55,10 +55,10 @@ jobs:
       - name: archive cng_provider.dll
         uses: actions/upload-artifact@v3
         with:
-          name: cng_provider.dll
+          name: cng_provider_${{ matrix.platform.msvc-arch }}.dll
           path: _build\cng_provider\Release\cng_provider.dll
       - name: archive cng_provider.lib
         uses: actions/upload-artifact@v3
         with:
-          name: cng_provider.lib
+          name: cng_provider_${{ matrix.platform.msvc-arch }}.lib
           path: _build\cng_provider\Release\cng_provider.lib
