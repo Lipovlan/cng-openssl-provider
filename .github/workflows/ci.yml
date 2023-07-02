@@ -52,13 +52,10 @@ jobs:
                 -S . -B _build
       - name: build cng_provider
         run: cmake --build _build --config Release
-      - name: archive cng_provider.dll
+      - name: archive cng_provider build
         uses: actions/upload-artifact@v3
         with:
-          name: cng_provider_${{ matrix.platform.msvc-arch }}.dll
-          path: _build\cng_provider\Release\cng_provider.dll
-      - name: archive cng_provider.lib
-        uses: actions/upload-artifact@v3
-        with:
-          name: cng_provider_${{ matrix.platform.msvc-arch }}.lib
-          path: _build\cng_provider\Release\cng_provider.lib
+          name: cng_provider_${{ matrix.platform.msvc-arch }}.zip
+          path: |
+            _build\cng_provider\Release\cng_provider.dll
+            _build\cng_provider\Release\cng_provider.lib
