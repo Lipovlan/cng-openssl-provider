@@ -52,3 +52,13 @@ jobs:
                 -S . -B _build
       - name: build cng_provider
         run: cmake --build _build --config Release
+      - name: archive cng_provider.dll
+        uses: actions/upload-artifact@v3
+        with:
+          name: cng_provider.dll
+          path: _build\cng_provider\Release\cng_provider.dll
+      - name: archive cng_provider.lib
+        uses: actions/upload-artifact@v3
+        with:
+          name: cng_provider.lib
+          path: _build\cng_provider\Release\cng_provider.lib
