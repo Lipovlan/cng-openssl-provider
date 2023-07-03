@@ -11,16 +11,16 @@ jobs:
       - name: set GitHub CI variables to x64
         if: ${{ matrix.platform == 'x64' }}
         run: |
-          echo "CMAKE_ARCH_VAR=x64" >> "$GITHUB_ENV"
-          echo "OPENSSL_TARGET_VAR=VC-WIN64A" >> "$GITHUB_ENV"
+          Add-Content -Path ${env:GITHUB_ENV} -Value "CMAKE_ARCH_VAR=x64"
+          Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_TARGET_VAR=VC-WIN64A"
       - name: set GitHub CI variables to x86
         if: ${{ matrix.platform == 'x86' }}
         run: |
-           echo "CMAKE_ARCH_VAR=Win32" >> "$GITHUB_ENV"
-           echo "OPENSSL_TARGET_VAR=VC-WIN32" >> "$GITHUB_ENV"
+           Add-Content -Path ${env:GITHUB_ENV} -Value "CMAKE_ARCH_VAR=Win32"
+           Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_TARGET_VAR=VC-WIN32"
       - name: set GitHub CI debug variables
         if: ${{ matrix.type == 'Debug' }}
-        run: echo "OPENSSL_DEBUG_VAR='-d enable-trace'" >> "$GITHUB_ENV"
+        run: Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_DEBUG_VAR='-d enable-trace'"
       - name: install MSVC for ${{ matrix.platform }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
