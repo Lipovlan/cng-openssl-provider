@@ -20,7 +20,7 @@ jobs:
            Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_TARGET_VAR=VC-WIN32"
       - name: set GitHub CI debug variables
         if: ${{ matrix.type == 'Debug' }}
-        run: Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_DEBUG_VAR='-d enable-trace'"
+        run: Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_DEBUG_VAR=-d enable-trace"
       - name: install MSVC for ${{ matrix.platform }}
         uses: ilammy/msvc-dev-cmd@v1
         with:
