@@ -1,0 +1,61 @@
+name: Automatic CNG provider build
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  build-cng_provider:
+    strategy:
+      matrix:
+        platform: [x64, x86]
+        type: [Release, Debug]
+    runs-on: windows-latest
+    steps:
+      - name: set GitHub CI variables to x64
+        if: ${{ matrix.platform == 'x64' }}
+        run: |
+          Add-Content -Path ${env:GITHUB_ENV} -Value "CMAKE_ARCH_VAR=x64"
+          Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_TARGET_VAR=VC-WIN64A"
+      - name: set GitHub CI variables to x86
+        if: ${{ matrix.platform == 'x86' }}
+        run: |
+           Add-Content -Path ${env:GITHUB_ENV} -Value "CMAKE_ARCH_VAR=Win32"
+           Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_TARGET_VAR=VC-WIN32"
+      - name: set GitHub CI debug variables
+        if: ${{ matrix.type == 'Debug' }}
+        run: Add-Content -Path ${env:GITHUB_ENV} -Value "OPENSSL_DEBUG_VAR=-d enable-trace"
+      - name: install MSVC for ${{ matrix.platform }}
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.platform }}
+      - name: checkout cng_provider
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: checkout OpenSSL
+        uses: actions/checkout@v3
+        with:
+          repository: openssl/openssl
+          path: openssl
+      - name: configure OpenSSL for ${{ env.OPENSSL_TARGET_VAR }}
+        run: |
+          $cwd = Get-Location
+          mkdir ..\openssl-install
+          perl Configure ${{ env.OPENSSL_TARGET_VAR }} ${{ env.OPENSSL_DEBUG_VAR }} --prefix="$cwd\..\openssl-install" no-asm no-shared
+        working-directory: openssl
+      - name: build+install OpenSSL
+        run: nmake /S install_sw
+        working-directory: openssl
+      - name: configure cng_provider for ${{ env.CMAKE_ARCH_VAR }}
+        run: |
+          $cwd = Get-Location
+          cmake -A ${{ env.CMAKE_ARCH_VAR }} `
+                -DCMAKE_INSTALL_PREFIX="$cwd\openssl-install" `
+                -DOPENSSL_ROOT_DIR="$cwd\openssl-install" `
+                -S . -B _build
+      - name: build cng_provider
+        run: cmake --build _build --config ${{ matrix.type }}
+      - name: archive cng_provider build
+        uses: actions/upload-artifact@v3
+        with:
+          name: cng_provider_${{ matrix.platform }}_${{ matrix.type }}.zip
+          path: |
+            _build\cng_provider\${{ matrix.type }}\cng_provider.dll
+            _build\cng_provider\${{ matrix.type }}\cng_provider.lib
