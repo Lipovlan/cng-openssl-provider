@@ -57,5 +57,5 @@ jobs:
         with:
           name: cng_provider_${{ matrix.platform }}_${{ matrix.type }}.zip
           path: |
-            _build\cng_provider\Release\cng_provider.dll
-            _build\cng_provider\Release\cng_provider.lib
+            _build\cng_provider\${{ matrix.type }}\cng_provider.dll
+            _build\cng_provider\${{ matrix.type }}\cng_provider.lib
