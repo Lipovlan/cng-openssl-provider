@@ -24,7 +24,10 @@ cng://CA
 cng://MY
 cng://ROOT
 ```
-
+## Example commandline usage
+```
+openssl s_client -provider cng_provider -provider default -connect certificate-required-website.example.com:443 -cert cng:my-key-from-store
+```
 ## Example in-code usage
 An example of how one might write code with this provider, that loads a specific certificate from the Windows store,
 can be found in the `client` folder.
