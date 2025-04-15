@@ -55,4 +55,7 @@ typedef struct cng_store_ctx {
     char *propquery;
 
     const char * windows_system_store_name;
+
+    /* e.g.CERT_SYSTEM_STORE_CURRENT_USER or CERT_SYSTEM_STORE_LOCAL_MACHINE */ 
+    DWORD store_location_flag; 
 } T_CNG_STORE_CTX;

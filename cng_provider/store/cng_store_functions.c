@@ -10,14 +10,26 @@
  * @return One on success, zero on error
  */
 int initialize_windows_cert_store(T_CNG_STORE_CTX *store_ctx) {
-    store_ctx->windows_certificate_store = CertOpenSystemStore(0, store_ctx->windows_system_store_name);
+
+    DWORD store_location_flag = store_ctx->store_location_flag;
+
+    store_ctx->windows_certificate_store = CertOpenStore(
+        CERT_STORE_PROV_SYSTEM_A,      // Provider type
+        0,                             // Encoding type, not used with CERT_STORE_PROV_SYSTEM
+        0,                             // hCryptProv, must be zero
+        store_location_flag,           // Location flag, e.g., CERT_SYSTEM_STORE_LOCAL_MACHINE
+        store_ctx->windows_system_store_name  // Store name like "MY", "CA", etc.
+    );
+
     if (store_ctx->windows_certificate_store) {
         debug_printf("STORE> The system store is now open.\n", DEBUG_INFO, DEBUG_LEVEL);
         return 1;
-    } else {
+    }
+    else {
         debug_printf("STORE> The system store did not open.\n", DEBUG_ERROR, DEBUG_LEVEL);
         return 0;
     }
+
 }
 
 
@@ -126,14 +138,60 @@ int are_store_open_args_ok(void *provctx, const char *uri) {
 }
 
 int parse_uri_from_store_open(T_CNG_STORE_CTX *store_ctx, const char *uri) {
-    const char *str = uri + 6; //in are_store_open_args_ok() we demand full scheme name, so we can skip that now
-    if (!strncmp(str, "CA", 2)) { store_ctx->windows_system_store_name = "CA"; }
-    if (!strncmp(str, "MY", 2)) { store_ctx->windows_system_store_name = "MY"; }
-    if (!strncmp(str, "ROOT", 4)) { store_ctx->windows_system_store_name = "ROOT"; }
-    if (store_ctx->windows_system_store_name == NULL) {
+    if (!uri || strncmp(uri, "cng://", 6) != 0) {
+        debug_printf("STORE> Invalid or missing URI scheme\n", DEBUG_ERROR, DEBUG_LEVEL);
+        return 0;
+    }
+
+    const char* str = uri + 6; // Skip "cng://"
+    const char* at_sign = strchr(str, '@');
+
+    // Extract store name
+    char store_name[64] = { 0 };
+    if (at_sign) {
+        size_t name_len = at_sign - str;
+        if (name_len >= sizeof(store_name)) name_len = sizeof(store_name) - 1;
+        strncpy(store_name, str, name_len);
+    }
+    else {
+        strncpy(store_name, str, sizeof(store_name) - 1); // default to whole string
+    }
+
+    // Convert store name to uppercase for matching
+    for (char* p = store_name; *p; ++p) *p = toupper((unsigned char)*p);
+
+    // Match known store names
+    if (strcmp(store_name, "CA") == 0) {
+        store_ctx->windows_system_store_name = "CA";
+    }
+    else if (strcmp(store_name, "MY") == 0) {
+        store_ctx->windows_system_store_name = "MY";
+    }
+    else if (strcmp(store_name, "ROOT") == 0) {
+        store_ctx->windows_system_store_name = "ROOT";
+    }
+    else {
         debug_printf("STORE> Could not parse valid system store name\n", DEBUG_ERROR, DEBUG_LEVEL);
         return 0;
     }
+
+    // Default to CURRENT_USER
+    store_ctx->store_location_flag = CERT_SYSTEM_STORE_CURRENT_USER;
+
+    if (at_sign) {
+        const char* location = at_sign + 1;
+        if (_stricmp(location, "localmachine") == 0) {
+            store_ctx->store_location_flag = CERT_SYSTEM_STORE_LOCAL_MACHINE;
+        }
+        else if (_stricmp(location, "currentuser") == 0) {
+            store_ctx->store_location_flag = CERT_SYSTEM_STORE_CURRENT_USER;
+        }
+        else {
+            debug_printf("STORE> Unsupported store location in URI\n", DEBUG_ERROR, DEBUG_LEVEL);
+            return 0;
+        }
+    }
+
     return 1;
 }
 
