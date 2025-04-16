@@ -33,7 +33,6 @@ currentmachine
 localmachine
 ```
 
-`
 ## Example commandline usage
 ```
 openssl s_client -provider cng_provider -provider default -connect certificate-required-website.example.com:443 -cert cng://MY@currentuser
