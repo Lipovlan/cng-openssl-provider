@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define CNG_PROVIDER_NAME_STR "OpenSSL Cryptographic API: New Generation Provider"
-#define CNG_PROVIDER_VERSION_STR "0.1"
+#define CNG_PROVIDER_VERSION_STR "0.2"
 #define CNG_PROVIDER_BUILDINFO_STR "Made for OpenSSL 3.2"
 
 static const char CNG_DEFAULT_ALG_PROPERTIES[] = "provider=cng_provider,fips=no";

@@ -24,9 +24,19 @@ cng://CA
 cng://MY
 cng://ROOT
 ```
+
+after the store name an optional store location can be specified by using the `@` symbol. For example: `cng://MY@currentuser`
+
+Currently supported are:
+```
+currentmachine
+localmachine
+```
+
+`
 ## Example commandline usage
 ```
-openssl s_client -provider cng_provider -provider default -connect certificate-required-website.example.com:443 -cert cng:my-key-from-store
+openssl s_client -provider cng_provider -provider default -connect certificate-required-website.example.com:443 -cert cng://MY@currentuser
 ```
 ## Example in-code usage
 An example of how one might write code with this provider, that loads a specific certificate from the Windows store,
@@ -75,6 +85,9 @@ cmake --build ./custom-build-directory --target cng_provider
 cmake --build ./custom-build-directory --target install
 cmake --build ./custom-build-directory --target client
 ```
+
+The install path is set in CMakeLists.txt with `CMAKE_INSTALL_PREFIX` variable.
+
 ### x86 compilation
 Make sure you compile OpenSSL in `x86` mode and have it installed. Use `amd64_x86` for `vcvarsall.bat` and `VC-WIN32` for `perl Configure`.
 Change the appropriate install directory and OpenSSL location in `CMakeLists.txt`.
