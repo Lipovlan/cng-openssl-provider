@@ -14,11 +14,11 @@ int initialize_windows_cert_store(T_CNG_STORE_CTX *store_ctx) {
     DWORD store_location_flag = store_ctx->store_location_flag;
 
     store_ctx->windows_certificate_store = CertOpenStore(
-        CERT_STORE_PROV_SYSTEM_A,      // Provider type
-        0,                             // Encoding type, not used with CERT_STORE_PROV_SYSTEM
-        0,                             // hCryptProv, must be zero
-        store_location_flag,           // Location flag, e.g., CERT_SYSTEM_STORE_LOCAL_MACHINE
-        store_ctx->windows_system_store_name  // Store name like "MY", "CA", etc.
+        CERT_STORE_PROV_SYSTEM_A,                      // Provider type
+        0,                                             // Encoding type, not used with CERT_STORE_PROV_SYSTEM
+        0,                                             // hCryptProv, must be zero
+        store_location_flag|CERT_STORE_READONLY_FLAG,  // Location flag, e.g., CERT_SYSTEM_STORE_LOCAL_MACHINE
+        store_ctx->windows_system_store_name           // Store name like "MY", "CA", etc.
     );
 
     if (store_ctx->windows_certificate_store) {
