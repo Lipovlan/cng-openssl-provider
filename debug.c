@@ -5,9 +5,7 @@
 
 void debug_printf(const char *string, int this_level, int global_level) {
     if (this_level <= global_level) {
-        BIO *stdoutbio = BIO_new_fd(_fileno(stdout), BIO_NOCLOSE);
-        BIO_puts(stdoutbio, string);
-        BIO_free(stdoutbio);
+        printf("%s", string);
     }
 }
 
