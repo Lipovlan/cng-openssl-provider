@@ -26,11 +26,11 @@ jobs:
         with:
           arch: ${{ matrix.platform }}
       - name: checkout cng_provider
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: checkout OpenSSL
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: openssl/openssl
           path: openssl
@@ -53,7 +53,7 @@ jobs:
       - name: build cng_provider
         run: cmake --build _build --config ${{ matrix.type }}
       - name: archive cng_provider build
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: cng_provider_${{ matrix.platform }}_${{ matrix.type }}.zip
           path: |
