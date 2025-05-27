@@ -1,4 +1,5 @@
 # OpenSSL provider using Cryptography API: Next Generation
+[![Automatic CNG provider build](https://github.com/Lipovlan/cng-openssl-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/Lipovlan/cng-openssl-provider/actions/workflows/ci.yml)
 
 Basic OpenSSL provider implementation that uses Windows Cryptography API: Next generation. It is primarily
 meant to be a stepping stone for anybody wanting to implement their own provider. The functionality of
