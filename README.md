@@ -18,26 +18,43 @@ non-exportable private keys can be used as well).
 To load this provider use the name `cng_provider` in either the `-provider` command line argument where supported or
 in `OSSL_PROVIDER_load()`. To maintain full functionality od OpenSSL, also load the `default` provider.
 
-This provider requires a URI with `cng://` schema. After the schema comes the Windows system store name. Currently
-supported are:
+This provider requires a URI with `cng://` schema. After the schema comes the Windows system store name. 
+
+### Supported Store Names
 ```
 cng://CA
 cng://MY
 cng://ROOT
 ```
 
-after the store name an optional store location can be specified by using the `@` symbol. For example: `cng://MY@currentuser`
+### Store Location
+An optional store location can be specified using the @ symbol. If omitted, the provider defaults to currentuser.
+```
+currentuser
+localmachine (or currentmachine)
+```
+`
+Example: cng://MY@localmachine
+`
 
-Currently supported are:
-```
-currentmachine
-localmachine
-```
+### Targeting a Specific Certificate
+You can target a specific certificate directly by appending its SHA1 fingerprint (hex string) with a forward slash /. When a fingerprint is provided, the provider performs a direct lookup instead of enumerating the entire store.
+
+`
+Example: cng://MY@localmachine/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+`
 
 ## Example commandline usage
+Standard store enumeration:
 ```
 openssl s_client -provider cng_provider -provider default -connect certificate-required-website.example.com:443 -cert cng://MY@currentuser
 ```
+
+Directly targeting a certificate via fingerprint:
+```
+openssl s_client -provider cng_provider -provider default -connect certificate-required-website.example.com:443 -cert cng://MY@localmachine/a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+```
+
 ## Example in-code usage
 An example of how one might write code with this provider, that loads a specific certificate from the Windows store,
 can be found in the `client` folder.
