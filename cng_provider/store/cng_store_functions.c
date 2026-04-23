@@ -34,14 +34,66 @@ int initialize_windows_cert_store(T_CNG_STORE_CTX *store_ctx) {
 
 
 /**
- * Helper function to load another certificate from windows store to our store management
- *
- * No return value, on error or when there are no more certificates we set the cert_store_eof to true
- * @param store_ctx Our providers store management context
- */
+* Helper function to load a certificate from the Windows store into our provider context.
+*
+* This function operates in two distinct modes:
+* 1. Targeted Lookup: If a SHA1 fingerprint was provided in the URI (`target_fingerprint`), 
+* it performs a direct search for that exact certificate.
+* 2. Store Enumeration: If no fingerprint is present, it acts as an iterator, fetching 
+* the next available certificate from the store on each call.
+*
+* No return value. On error, or when there are no more matching certificates to load, 
+* the `cert_store_eof` flag is set to 1 (true) to signal End-Of-File to OpenSSL.
+*
+* @param store_ctx Pointer to our provider's store management context
+*/
 void load_another_cert_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
+
+    // --- DIRECT CERTIFICATE TARGETING VIA FINGERPRINT ---
+    if (store_ctx->target_fingerprint[0] != '\0') {
+
+        // If we have already yielded this specific certificate to OpenSSL, signal End Of File
+        if (store_ctx->prev_cert_ctx != NULL) {
+            store_ctx->cert_store_eof = 1;
+            CertFreeCertificateContext(store_ctx->prev_cert_ctx);
+            store_ctx->prev_cert_ctx = NULL;
+            return;
+        }
+
+        CRYPT_HASH_BLOB hashBlob;
+        BYTE hash[20];
+
+        // Convert the hex string into a byte array
+        for (int i = 0; i < 20; i++) {
+            unsigned int temp;
+            sscanf_s(store_ctx->target_fingerprint + 2 * i, "%02x", &temp);
+            hash[i] = (BYTE)temp;
+        }
+
+        hashBlob.pbData = hash;
+        hashBlob.cbData = 20;
+
+        // Direct lookup for the exact matching certificate
+        store_ctx->prev_cert_ctx = CertFindCertificateInStore(
+            store_ctx->windows_certificate_store,
+            X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+            0, CERT_FIND_SHA1_HASH, &hashBlob, NULL);
+
+        if (store_ctx->prev_cert_ctx) {
+            // Success! Keep EOF at 0 so OpenSSL fetches the context in the next step.
+            store_ctx->cert_store_eof = 0;
+            debug_printf("STORE> Exact certificate found via fingerprint.\n", DEBUG_TRACE, DEBUG_LEVEL);
+        } else {
+            // Not found, abort immediately.
+            store_ctx->cert_store_eof = 1;
+            debug_printf("STORE> Certificate NOT found via fingerprint.\n", DEBUG_ERROR, DEBUG_LEVEL);
+        }
+        return;
+    }
+
+    // --- STANDARD ENUMERATION (Fallback if no fingerprint was provided in the URI) ---
     store_ctx->prev_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store,
-                                                           store_ctx->prev_cert_ctx);
+        store_ctx->prev_cert_ctx);
     store_ctx->cert_store_eof = !store_ctx->prev_cert_ctx;
 }
 
@@ -76,45 +128,130 @@ const char *get_key_algorithm_name(NCRYPT_KEY_HANDLE key) {
     return name;
 }
 
+/* * Attempts to acquire the CNG private key from the current certificate context.
+* Returns:
+* 1 : Success (Key handle acquired and stored in store_ctx)
+* 0 : Fatal error / EOF (Stop searching, return 0 to OpenSSL)
+* -1 : Non-fatal error (Key invalid/missing, skip to next certificate)
+*/
+int cng_store_acquire_private_key(T_CNG_STORE_CTX *store_ctx) {
+    DWORD key_spec;
+    BOOL caller_must_free;
+    NCRYPT_KEY_HANDLE tmp_key_handle;
+
+    BOOL retval = CryptAcquireCertificatePrivateKey(store_ctx->prev_key_cert_ctx,
+        CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG | CRYPT_ACQUIRE_SILENT_FLAG, 
+        NULL, &tmp_key_handle, &key_spec, &caller_must_free);
+
+    if (retval != TRUE) {
+        DWORD err = GetLastError();
+        char err_msg[256];
+        sprintf_s(err_msg, sizeof(err_msg), "STORE> ERROR: CryptAcquire failed! Error = 0x%08X\n", err);
+        debug_printf(err_msg, 1, DEBUG_LEVEL);
+
+        if (store_ctx->target_fingerprint[0] != '\0') {
+            store_ctx->priv_key_store_eof = 1;
+            return 0; /* Fatal / EOF */
+        }
+        return -1; /* Continue search */
+    } else {
+        debug_printf("STORE> SUCCESS: CryptAcquire got the handle!\n", DEBUG_TRACE, DEBUG_LEVEL);
+    }
+
+    const char *keytype = get_key_algorithm_name(tmp_key_handle);
+    if (!keytype) {
+        debug_printf("STORE> ERROR: get_key_algorithm_name returned NULL in Session 0!\n", DEBUG_ERROR, DEBUG_LEVEL);
+        NCryptFreeObject(tmp_key_handle);
+
+        if (store_ctx->target_fingerprint[0] != '\0') {
+            store_ctx->priv_key_store_eof = 1;
+            return 0; /* Fatal / EOF */
+        }
+        return -1; /* Continue search */
+    }
+
+    /* Success: Store the handle */
+    store_ctx->key->windows_key_handle = tmp_key_handle;
+    return 1;
+}
+
 /**
- * Helper function to load another private key from windows store to our store management
- *
- * No return value, on error or when there are no more certificates we set the priv_key_store_eof to true
- * Actually we just enumerate certificates but we extract their private keys.
- *
- * @param store_ctx Our providers store management context
- */
+* Helper function to load a private key from the Windows store into our provider context.
+*
+* This function operates in two distinct modes:
+* 1. Targeted Lookup: If a SHA1 fingerprint was provided in the URI, it performs a 
+* direct search for that exact certificate and extracts its private key.
+* 2. Store Enumeration: If no fingerprint is present, it iterates through the store, 
+* extracting private keys from available certificates.
+*
+* Returns 1 on success, 0 on error or EOF. 
+* On error or when there are no more keys, priv_key_store_eof is set to 1.
+*
+* @param store_ctx Our provider's store management context
+*/
 int load_another_privkey_from_store_into_context(T_CNG_STORE_CTX *store_ctx) {
-    while (!store_ctx->priv_key_store_eof) {
-        store_ctx->prev_key_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store,
-                                                                   store_ctx->prev_key_cert_ctx);
-        store_ctx->priv_key_store_eof = !store_ctx->prev_key_cert_ctx;
-        if (store_ctx->priv_key_store_eof) {
-            debug_printf("STORE> No more certificates in store to extract private keys from\n", DEBUG_INFO,
-                         DEBUG_LEVEL);
+
+    // --- DIRECT CERTIFICATE TARGETING VIA FINGERPRINT ---
+    if (store_ctx->target_fingerprint[0] != '\0') {
+
+        // If we already processed the targeted key, signal End Of File and clean up
+        if (store_ctx->prev_key_cert_ctx != NULL) {
+            store_ctx->priv_key_store_eof = 1;
+            CertFreeCertificateContext(store_ctx->prev_key_cert_ctx);
+            store_ctx->prev_key_cert_ctx = NULL;
             return 0;
         }
-        DWORD key_spec;
-        BOOL caller_must_free;
-        NCRYPT_KEY_HANDLE tmp_key_handle;
-        BOOL retval = CryptAcquireCertificatePrivateKey(store_ctx->prev_key_cert_ctx,
-                                                        CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG,
-                                                        NULL, &tmp_key_handle, &key_spec, &caller_must_free);
-        if (retval != TRUE || key_spec != CERT_NCRYPT_KEY_SPEC || caller_must_free != TRUE) {
-            NCryptFreeObject(tmp_key_handle);
-            continue;
+
+        CRYPT_HASH_BLOB hashBlob;
+        BYTE hash[20];
+
+        // Safely convert the hex string into a byte array
+        for (int i = 0; i < 20; i++) {
+            unsigned int temp;
+            sscanf_s(store_ctx->target_fingerprint + 2 * i, "%02x", &temp);
+            hash[i] = (BYTE)temp;
         }
 
-        const char *keytype = get_key_algorithm_name(tmp_key_handle);
-        if (!keytype) {
-            debug_printf("STORE> Skipping non-RSA key\n", DEBUG_INFO, DEBUG_LEVEL);
-            NCryptFreeObject(tmp_key_handle);
-            continue;
-        }
+        hashBlob.pbData = hash;
+        hashBlob.cbData = 20;
 
-        store_ctx->key->windows_key_handle = tmp_key_handle;
-        return 1;
+        store_ctx->prev_key_cert_ctx = CertFindCertificateInStore(
+            store_ctx->windows_certificate_store,
+            X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+            0, CERT_FIND_SHA1_HASH, &hashBlob, NULL);
+
+        if (store_ctx->prev_key_cert_ctx) {
+            store_ctx->priv_key_store_eof = 0; 
+
+            // Call the helper function to acquire the key
+            int acquire_res = cng_store_acquire_private_key(store_ctx);
+            if (acquire_res == 1) return 1;       // Success!
+
+            // If we failed to acquire the key for our specific target, we must abort
+            store_ctx->priv_key_store_eof = 1;
+            return 0;
+        } else {
+            // Target not found
+            store_ctx->priv_key_store_eof = 1;
+            return 0;
+        }
     }
+
+    // --- STANDARD ENUMERATION (Fallback) ---
+    while (!store_ctx->priv_key_store_eof) {
+        store_ctx->prev_key_cert_ctx = CertEnumCertificatesInStore(store_ctx->windows_certificate_store,
+            store_ctx->prev_key_cert_ctx);
+
+        store_ctx->priv_key_store_eof = !store_ctx->prev_key_cert_ctx;
+        if (store_ctx->priv_key_store_eof) return 0;
+
+        // Call the helper function to acquire the key and handle the routing
+        int acquire_res = cng_store_acquire_private_key(store_ctx);
+        if (acquire_res == 1) return 1;       // Success!
+        if (acquire_res == 0) return 0;       // Fatal error / EOF
+        if (acquire_res == -1) continue;      // Key missing or invalid, skip to next cert
+    }
+
     return 0;
 }
 
@@ -138,61 +275,59 @@ int are_store_open_args_ok(void *provctx, const char *uri) {
 }
 
 int parse_uri_from_store_open(T_CNG_STORE_CTX *store_ctx, const char *uri) {
-    if (!uri || strncmp(uri, "cng://", 6) != 0) {
-        debug_printf("STORE> Invalid or missing URI scheme\n", DEBUG_ERROR, DEBUG_LEVEL);
-        return 0;
-    }
+    // Ensure the URI is valid and starts with the expected "cng://" scheme
+    if (!uri || strncmp(uri, "cng://", 6) != 0) return 0;
 
-    const char* str = uri + 6; // Skip "cng://"
+    const char* str = uri + 6; 
     const char* at_sign = strchr(str, '@');
 
-    // Extract store name
     char store_name[64] = { 0 };
+
+    // Extract the store name (the part before the '@' symbol, if present)
     if (at_sign) {
         size_t name_len = at_sign - str;
         if (name_len >= sizeof(store_name)) name_len = sizeof(store_name) - 1;
-        strncpy(store_name, str, name_len);
-    }
-    else {
-        strncpy(store_name, str, sizeof(store_name) - 1); // default to whole string
+        strncpy_s(store_name, sizeof(store_name), str, name_len);
+    } else {
+        // If no '@' is found, treat the entire remaining string as the store name
+        strncpy_s(store_name, sizeof(store_name), str, _TRUNCATE);
     }
 
-    // Convert store name to uppercase for matching
+    // Convert the extracted store name to uppercase to ensure case-insensitive matching
     for (char* p = store_name; *p; ++p) *p = toupper((unsigned char)*p);
 
-    // Match known store names
-    if (strcmp(store_name, "CA") == 0) {
-        store_ctx->windows_system_store_name = "CA";
-    }
-    else if (strcmp(store_name, "MY") == 0) {
-        store_ctx->windows_system_store_name = "MY";
-    }
-    else if (strcmp(store_name, "ROOT") == 0) {
-        store_ctx->windows_system_store_name = "ROOT";
-    }
-    else {
-        debug_printf("STORE> Could not parse valid system store name\n", DEBUG_ERROR, DEBUG_LEVEL);
-        return 0;
-    }
+    // Map the parsed string to the official Windows system store names
+    if (strcmp(store_name, "CA") == 0) store_ctx->windows_system_store_name = "CA";
+    else if (strcmp(store_name, "MY") == 0) store_ctx->windows_system_store_name = "MY";
+    else if (strcmp(store_name, "ROOT") == 0) store_ctx->windows_system_store_name = "ROOT";
+    else return 0; // Invalid or unsupported store name
 
-    // Default to CURRENT_USER
+    // Set the default store location flag
     store_ctx->store_location_flag = CERT_SYSTEM_STORE_CURRENT_USER;
 
+    // Process the location and optional fingerprint if an '@' was found
     if (at_sign) {
         const char* location = at_sign + 1;
-        if (_stricmp(location, "localmachine") == 0) {
+        const char* slash = strchr(location, '/');
+
+        // IMPORTANT: Calculate the exact length of the location string to correctly 
+        // parse formats like "localmachine/..." without bleeding into the fingerprint
+        size_t loc_len = slash ? (size_t)(slash - location) : strlen(location);
+
+        // Determine the target Windows store location based on the URI
+        if (_strnicmp(location, "localmachine", loc_len) == 0) {
             store_ctx->store_location_flag = CERT_SYSTEM_STORE_LOCAL_MACHINE;
-        }
-        else if (_stricmp(location, "currentuser") == 0) {
+        } else if (_strnicmp(location, "currentuser", loc_len) == 0) {
             store_ctx->store_location_flag = CERT_SYSTEM_STORE_CURRENT_USER;
         }
-        else {
-            debug_printf("STORE> Unsupported store location in URI\n", DEBUG_ERROR, DEBUG_LEVEL);
-            return 0;
+
+        // If a '/' delimiter is present, extract the remaining part as the target SHA1 fingerprint
+        if (slash && strlen(slash + 1) > 0) {
+            strncpy_s(store_ctx->target_fingerprint, sizeof(store_ctx->target_fingerprint), slash + 1, _TRUNCATE);
         }
     }
 
-    return 1;
+    return 1; // URI successfully parsed
 }
 
 void init_store_ctx(T_CNG_STORE_CTX *store_ctx) {
@@ -201,6 +336,7 @@ void init_store_ctx(T_CNG_STORE_CTX *store_ctx) {
     store_ctx->windows_system_store_name = NULL;
     store_ctx->priv_key_store_eof = 0;
     store_ctx->cert_store_eof = 0;
+    memset(store_ctx->target_fingerprint, 0, sizeof(store_ctx->target_fingerprint));
 }
 
 /**

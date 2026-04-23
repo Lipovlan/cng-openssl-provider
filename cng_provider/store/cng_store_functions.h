@@ -58,4 +58,7 @@ typedef struct cng_store_ctx {
 
     /* e.g.CERT_SYSTEM_STORE_CURRENT_USER or CERT_SYSTEM_STORE_LOCAL_MACHINE */ 
     DWORD store_location_flag; 
+
+    /* Optional SHA1 hex string from URI for direct certificate targeting */
+    char target_fingerprint[64];
 } T_CNG_STORE_CTX;
